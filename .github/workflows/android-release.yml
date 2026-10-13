@@ -11,11 +11,15 @@ contents: write
 
 concurrency:
 group: android-release
-cancel-in-progress: true
+cancel-in-progress: false
 
 jobs:
 apk:
 runs-on: ubuntu-latest
+
+env:
+  API_BASE_URL: https://YOUR-BACKEND.onrender.com
+  STUDENT_FRONTEND_URL: https://YOUR-STUDENT-FRONTEND-URL
 
 steps:
   - name: Checkout repository
@@ -30,54 +34,57 @@ steps:
   - name: Set up Gradle
     uses: gradle/actions/setup-gradle@v4
 
-  - name: Check Android project
+  - name: Verify Android project
     run: |
-      echo "Repository root:"
+      echo "Checking Android project..."
       ls -la
-      echo "Android directory:"
-      test -d android || {
-        echo "ERROR: android/ directory not found at repository root."
+      if [ ! -d android ]; then
+        echo "ERROR: android directory not found."
         exit 1
-      }
-      test -f android/gradlew || {
+      fi
+      if [ ! -f android/gradlew ]; then
         echo "ERROR: android/gradlew not found."
         find android -maxdepth 3 -type f | head -80
         exit 1
-      }
+      fi
 
-  - name: Build APK
+  - name: Build Android APK
     working-directory: android
     run: |
       chmod +x ./gradlew
-      ./gradlew assembleDebug
+      ./gradlew assembleDebug \
+        -PAPI_BASE_URL="$API_BASE_URL" \
+        -PSTUDENT_FRONTEND_URL="$STUDENT_FRONTEND_URL"
 
-  - name: Locate APK
-    id: apk
+  - name: Find and prepare APK
     run: |
-      APK_PATH="$(find android -type f -path '*/build/outputs/apk/*/*.apk' | head -n 1)"
+      APK_PATH="$(find android -type f \
+        -path '*/build/outputs/apk/*/*.apk' \
+        ! -name '*androidTest*' | head -n 1)"
+
       if [ -z "$APK_PATH" ]; then
-        echo "ERROR: No APK was generated."
-        find android -type d -path '*/build/outputs/*' -print
+        echo "ERROR: APK was not generated."
         exit 1
       fi
+
       mkdir -p release-apk
       cp "$APK_PATH" release-apk/Student-Election-App.apk
-      echo "apk_path=release-apk/Student-Election-App.apk" >> "$GITHUB_OUTPUT"
+      echo "APK prepared successfully."
 
-  - name: Delete previous latest release
+  - name: Replace previous latest release
     env:
       GH_TOKEN: ${{ github.token }}
     run: |
       gh release delete latest --yes --cleanup-tag || true
-      git push origin :refs/tags/latest || true
 
   - name: Publish latest APK
     uses: softprops/action-gh-release@v2
     with:
       tag_name: latest
-      name: Latest Android APK
+      name: Latest Student Election App
       body: |
-        Automatically built Android debug APK.
+        Latest automatically built Student Election Android APK.
+
         Download Student-Election-App.apk below.
       files: release-apk/Student-Election-App.apk
       make_latest: true
