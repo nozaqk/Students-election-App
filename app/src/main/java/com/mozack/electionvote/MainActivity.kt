@@ -20,7 +20,6 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
@@ -40,7 +39,6 @@ class MainActivity : AppCompatActivity() {
     private val home = Uri.parse(BuildConfig.STUDENT_URL)
     private var pending: Pair<String, Long>? = null          // (request id, timeout) waiting on a permission prompt
     private var reply: JavaScriptReplyProxy? = null
-    @Volatile private var ready = false                        // true once the first page load finished or failed
 
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val p = pending; pending = null
@@ -50,11 +48,7 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Keep the logo fixed on screen until the website has finished loading (or failed, or 12 s have passed).
-        val splash = installSplashScreen()
-        splash.setKeepOnScreenCondition { !ready }
         super.onCreate(savedInstanceState)
-        window.decorView.postDelayed({ ready = true }, 12_000)
         setContentView(R.layout.activity_main)
         web = findViewById(R.id.web); offline = findViewById(R.id.offline); progress = findViewById(R.id.progress)
         scanner = BleScanner(this)
@@ -78,8 +72,8 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
             override fun onPageStarted(v: WebView, url: String, favicon: Bitmap?) { progress.visibility = View.VISIBLE }
-            override fun onPageFinished(v: WebView, url: String) { progress.visibility = View.GONE; ready = true }
-            override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) { if (r.isForMainFrame) { offline.visibility = View.VISIBLE; ready = true } }
+            override fun onPageFinished(v: WebView, url: String) { progress.visibility = View.GONE }
+            override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) { if (r.isForMainFrame) offline.visibility = View.VISIBLE }
         }
         web.webChromeClient = object : android.webkit.WebChromeClient() { override fun onProgressChanged(v: WebView, p: Int) { progress.progress = p } }
 
