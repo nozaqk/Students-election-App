@@ -1,8 +1,6 @@
 <resources>
-    <!-- Shown while the app starts and, via MainActivity, until the website has finished loading. -->
+    <!-- Startup logo: the normal app icon, held on screen (MainActivity) until the website has loaded. -->
     <style name="Theme.ElectionVote.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#0B3D2E</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/Theme.ElectionVote</item>
     </style>
     <style name="Theme.ElectionVote" parent="Theme.AppCompat.DayNight.NoActionBar">
