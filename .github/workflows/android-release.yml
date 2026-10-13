@@ -1,5 +1,5 @@
 name: Android APK (latest)
-# Builds the Android app on every push to main and keeps ONE release called "latest" holding only the newest APK.
+# Builds the app on every push to main and keeps ONE release called "latest" holding only the newest APK.
 on:
   push:
     branches: [main]
@@ -16,21 +16,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
-      - name: Accept Android SDK licenses and install platform (runner image already ships the SDK)
+      - name: Accept Android SDK licenses and install platform (the runner image already ships the SDK)
         run: |
           SDKM="$(ls -d $ANDROID_HOME/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
           yes | "$SDKM" --licenses > /dev/null || true
           "$SDKM" "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "8.7" }
+      - name: Unit tests (informational, never blocks the APK)
+        continue-on-error: true
+        run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build APK
-        working-directory: android
-        run: gradle :app:assembleDebug -PstudentUrl=${{ vars.STUDENT_URL || 'https://student-election-frontend.edgeone.dev' }}
+        run: gradle :app:assembleDebug --stacktrace -PstudentUrl=${{ vars.STUDENT_URL || 'https://student-election-frontend.edgeone.dev' }}
       - name: Replace the "latest" release with this build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/debug/*.apk election-app.apk
+          cp app/build/outputs/apk/debug/*.apk election-app.apk
           gh release delete latest --cleanup-tag --yes || true
           gh release create latest election-app.apk --target "$GITHUB_SHA" --latest \
             --title "Election app (latest build)" \
