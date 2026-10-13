@@ -5,6 +5,9 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -20,6 +23,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
@@ -39,6 +43,12 @@ class MainActivity : AppCompatActivity() {
     private val home = Uri.parse(BuildConfig.STUDENT_URL)
     private var pending: Pair<String, Long>? = null          // (request id, timeout) waiting on a permission prompt
     private var reply: JavaScriptReplyProxy? = null
+    private val connectivity by lazy { getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager }
+    private val netCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onLost(network: Network) { runOnUiThread { if (!isOnline()) showOffline() } }
+        override fun onAvailable(network: Network) { runOnUiThread { if (offline.visibility == View.VISIBLE && isOnline()) goOnline() } }
+    }
+    @Volatile private var ready = false                        // true once the first page load finished or failed
 
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val p = pending; pending = null
@@ -48,11 +58,15 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Keep the logo fixed on screen until the website has finished loading (or failed, or 12 s have passed).
+        val splash = installSplashScreen()
+        splash.setKeepOnScreenCondition { !ready }
         super.onCreate(savedInstanceState)
+        window.decorView.postDelayed({ ready = true }, 12_000)
         setContentView(R.layout.activity_main)
         web = findViewById(R.id.web); offline = findViewById(R.id.offline); progress = findViewById(R.id.progress)
         scanner = BleScanner(this)
-        findViewById<Button>(R.id.retry).setOnClickListener { offline.visibility = View.GONE; web.reload() }
+        findViewById<Button>(R.id.retry).setOnClickListener { if (isOnline()) goOnline() }
 
         web.settings.apply {
             javaScriptEnabled = true; domStorageEnabled = true
@@ -72,8 +86,8 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
             override fun onPageStarted(v: WebView, url: String, favicon: Bitmap?) { progress.visibility = View.VISIBLE }
-            override fun onPageFinished(v: WebView, url: String) { progress.visibility = View.GONE }
-            override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) { if (r.isForMainFrame) offline.visibility = View.VISIBLE }
+            override fun onPageFinished(v: WebView, url: String) { progress.visibility = View.GONE; ready = true }
+            override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) { if (r.isForMainFrame) { offline.visibility = View.VISIBLE; ready = true } }
         }
         web.webChromeClient = object : android.webkit.WebChromeClient() { override fun onProgressChanged(v: WebView, p: Int) { progress.progress = p } }
 
@@ -90,11 +104,25 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() { if (web.canGoBack()) web.goBack() else finish() }
         })
-        if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(BuildConfig.STUDENT_URL)
+        if (!isOnline()) showOffline()                                   // no internet: do not open the app at all
+        else if (savedInstanceState != null && web.restoreState(savedInstanceState) != null) { /* restored */ }
+        else web.loadUrl(BuildConfig.STUDENT_URL)
     }
 
     override fun onSaveInstanceState(out: Bundle) { super.onSaveInstanceState(out); web.saveState(out) }
-    override fun onStop() { scanner.stop(); super.onStop() }
+    override fun onStart() { super.onStart(); runCatching { connectivity.registerDefaultNetworkCallback(netCallback) }; if (!isOnline()) showOffline() }
+    override fun onStop() { scanner.stop(); runCatching { connectivity.unregisterNetworkCallback(netCallback) }; super.onStop() }
+
+    /** True only when the phone has an internet connection that has been validated. */
+    private fun isOnline(): Boolean {
+        val caps = connectivity.getNetworkCapabilities(connectivity.activeNetwork) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+    private fun showOffline() { offline.visibility = View.VISIBLE; ready = true }
+    private fun goOnline() {
+        offline.visibility = View.GONE
+        if (web.url == null) web.loadUrl(BuildConfig.STUDENT_URL) else web.reload()
+    }
     override fun onDestroy() { scanner.stop(); web.destroy(); super.onDestroy() }
 
     private fun handle(m: WebMessageCompat) {
