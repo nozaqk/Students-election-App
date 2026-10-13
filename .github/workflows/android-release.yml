@@ -10,7 +10,7 @@ permissions:
 contents: write
 
 concurrency:
-group: android-latest
+group: android-release
 cancel-in-progress: true
 
 jobs:
@@ -25,71 +25,60 @@ steps:
     uses: actions/setup-java@v4
     with:
       distribution: temurin
-      java-version: "17"
+      java-version: '17'
 
-  - name: Set up Android SDK
-    uses: android-actions/setup-android@v3
+  - name: Set up Gradle
+    uses: gradle/actions/setup-gradle@v4
 
-  - name: Install Android SDK components
+  - name: Check Android project
     run: |
-      sdkmanager --install \
-        "platforms;android-34" \
-        "build-tools;34.0.0" \
-        "platform-tools"
-
-  - name: Verify Android SDK
-    run: |
-      sdkmanager --list_installed
-      echo "ANDROID_HOME=$ANDROID_HOME"
-
-  - name: Locate Gradle wrapper
-    run: |
-      if [ ! -f "./gradlew" ]; then
-        echo "ERROR: gradlew was not found in the repository root."
-        echo "Repository files:"
-        ls -la
+      echo "Repository root:"
+      ls -la
+      echo "Android directory:"
+      test -d android || {
+        echo "ERROR: android/ directory not found at repository root."
         exit 1
-      fi
-      chmod +x ./gradlew
-
-  - name: Run unit tests
-    continue-on-error: true
-    env:
-      STUDENT_URL: ${{ vars.STUDENT_URL || 'https://student-election-frontend.edgeone.dev' }}
-    run: |
-      ./gradlew :app:testDebugUnitTest \
-        -PstudentUrl="$STUDENT_URL" \
-        --stacktrace
+      }
+      test -f android/gradlew || {
+        echo "ERROR: android/gradlew not found."
+        find android -maxdepth 3 -type f | head -80
+        exit 1
+      }
 
   - name: Build APK
-    env:
-      STUDENT_URL: ${{ vars.STUDENT_URL || 'https://student-election-frontend.edgeone.dev' }}
+    working-directory: android
     run: |
-      ./gradlew :app:assembleDebug \
-        -PstudentUrl="$STUDENT_URL" \
-        --stacktrace
+      chmod +x ./gradlew
+      ./gradlew assembleDebug
 
-  - name: Verify and prepare APK
+  - name: Locate APK
+    id: apk
     run: |
-      APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
-
-      if [ ! -f "$APK_PATH" ]; then
-        echo "ERROR: APK was not generated."
-        find . -path "*/build/outputs/apk/*.apk" -type f
+      APK_PATH="$(find android -type f -path '*/build/outputs/apk/*/*.apk' | head -n 1)"
+      if [ -z "$APK_PATH" ]; then
+        echo "ERROR: No APK was generated."
+        find android -type d -path '*/build/outputs/*' -print
         exit 1
       fi
+      mkdir -p release-apk
+      cp "$APK_PATH" release-apk/Student-Election-App.apk
+      echo "apk_path=release-apk/Student-Election-App.apk" >> "$GITHUB_OUTPUT"
 
-      cp "$APK_PATH" election-app.apk
-      ls -lh election-app.apk
-
-  - name: Replace latest release
+  - name: Delete previous latest release
     env:
       GH_TOKEN: ${{ github.token }}
     run: |
-      gh release delete latest --cleanup-tag --yes || true
+      gh release delete latest --yes --cleanup-tag || true
+      git push origin :refs/tags/latest || true
 
-      gh release create latest election-app.apk \
-        --target "$GITHUB_SHA" \
-        --title "Election App - Latest Build" \
-        --notes "Latest Android election app APK." \
-        --latest
+  - name: Publish latest APK
+    uses: softprops/action-gh-release@v2
+    with:
+      tag_name: latest
+      name: Latest Android APK
+      body: |
+        Automatically built Android debug APK.
+        Download Student-Election-App.apk below.
+      files: release-apk/Student-Election-App.apk
+      make_latest: true
+      fail_on_unmatched_files: true
