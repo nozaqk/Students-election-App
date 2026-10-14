@@ -80,6 +80,7 @@ class MainActivity : AppCompatActivity() {
         scanner = BleScanner(this)
         findViewById<Button>(R.id.retry).setOnClickListener { if (isOnline()) goOnline() }
 
+        web.overScrollMode = View.OVER_SCROLL_NEVER                      // no stretch/bounce when dragging past the top or bottom
         web.settings.apply {
             javaScriptEnabled = true; domStorageEnabled = true
             allowFileAccess = false; allowContentAccess = false
