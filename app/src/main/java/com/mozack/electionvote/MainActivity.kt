@@ -2,7 +2,12 @@ package com.mozack.electionvote
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
@@ -48,6 +53,13 @@ class MainActivity : AppCompatActivity() {
         override fun onLost(network: Network) { runOnUiThread { if (!isOnline()) showOffline() } }
         override fun onAvailable(network: Network) { runOnUiThread { if (offline.visibility == View.VISIBLE && isOnline()) goOnline() } }
     }
+    private val btAdapter: BluetoothAdapter? by lazy { (getSystemService(BLUETOOTH_SERVICE) as BluetoothManager).adapter }
+    private val btReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) { if (i.action == BluetoothAdapter.ACTION_STATE_CHANGED) pushBluetoothState() }
+    }
+    // System dialog "Allow Student Election to turn on Bluetooth?" (apps cannot switch Bluetooth on silently on modern Android).
+    private val enableBluetooth = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { pushBluetoothState() }
+    private val connectPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) askToEnableBluetooth() else pushBluetoothState() }
     @Volatile private var ready = false                        // true once the first page load finished or failed
 
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -104,14 +116,32 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() { if (web.canGoBack()) web.goBack() else finish() }
         })
+        if (savedInstanceState == null) ensureBluetooth()                // ask to turn Bluetooth on each time the app is opened
         if (!isOnline()) showOffline()                                   // no internet: do not open the app at all
         else if (savedInstanceState != null && web.restoreState(savedInstanceState) != null) { /* restored */ }
         else web.loadUrl(BuildConfig.STUDENT_URL)
     }
 
     override fun onSaveInstanceState(out: Bundle) { super.onSaveInstanceState(out); web.saveState(out) }
-    override fun onStart() { super.onStart(); runCatching { connectivity.registerDefaultNetworkCallback(netCallback) }; if (!isOnline()) showOffline() }
-    override fun onStop() { scanner.stop(); runCatching { connectivity.unregisterNetworkCallback(netCallback) }; super.onStop() }
+    override fun onStart() {
+        super.onStart()
+        runCatching { connectivity.registerDefaultNetworkCallback(netCallback) }; if (!isOnline()) showOffline()
+        runCatching { registerReceiver(btReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)) }
+        pushBluetoothState()
+    }
+    override fun onStop() { scanner.stop(); runCatching { connectivity.unregisterNetworkCallback(netCallback) }; runCatching { unregisterReceiver(btReceiver) }; super.onStop() }
+
+    private fun isBluetoothOn() = btAdapter?.isEnabled == true
+    /** Tell the website whether Bluetooth is on, so it can show the BT badge (green = on, red = off). */
+    private fun pushBluetoothState() = post("""{"type":"bluetooth","supported":${btAdapter != null},"on":${isBluetoothOn()}}""")
+
+    /** On app open: if Bluetooth is off, show the system prompt to turn it on. Android 12+ needs the "nearby devices" permission for it. */
+    private fun ensureBluetooth() {
+        if (btAdapter == null || isBluetoothOn()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) connectPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        else askToEnableBluetooth()
+    }
+    private fun askToEnableBluetooth() { runCatching { enableBluetooth.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) } }
 
     /** True only when the phone has an internet connection that has been validated. */
     private fun isOnline(): Boolean {
@@ -135,6 +165,8 @@ class MainActivity : AppCompatActivity() {
                 if (ContextCompat.checkSelfPermission(this, perm) == PackageManager.PERMISSION_GRANTED) runScan(id, timeout)
                 else { pending = id to timeout; permission.launch(perm) }
             }
+            "btStatus" -> pushBluetoothState()
+            "btEnable" -> ensureBluetooth()
             "openSettings" -> startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
         }
     }
