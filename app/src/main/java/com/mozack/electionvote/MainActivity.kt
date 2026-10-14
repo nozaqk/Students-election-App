@@ -58,13 +58,18 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(c: Context, i: Intent) { if (i.action == BluetoothAdapter.ACTION_STATE_CHANGED) pushBluetoothState() }
     }
     // System dialog "Allow Student Election to turn on Bluetooth?" (apps cannot switch Bluetooth on silently on modern Android).
-    private val enableBluetooth = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { pushBluetoothState() }
-    private val connectPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) askToEnableBluetooth() else pushBluetoothState() }
+    private val enableBluetooth = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { pushBluetoothState(); askScanPermission() }
+    private val connectPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) askToEnableBluetooth() else { pushBluetoothState(); askScanPermission() } }
+    private var scanning = false                               // a vote-time scan is running: do not start a badge probe over it
+    private var lastNodeSeenAt = 0L
+    private var badgeNode = false
+    private val probeHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val probeTick = object : Runnable { override fun run() { probeNow(); probeHandler.postDelayed(this, PROBE_EVERY_MS) } }
     @Volatile private var ready = false                        // true once the first page load finished or failed
 
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val p = pending; pending = null
-        if (p == null) return@registerForActivityResult
+        if (p == null) { probeNow(); return@registerForActivityResult }   // permission asked at start-up (not for a vote scan)
         if (granted) runScan(p.first, p.second) else sendError(p.first, "PERMISSION_DENIED", "Bluetooth permission is required to verify you are at the polling location.")
     }
 
@@ -129,19 +134,31 @@ class MainActivity : AppCompatActivity() {
         runCatching { connectivity.registerDefaultNetworkCallback(netCallback) }; if (!isOnline()) showOffline()
         runCatching { registerReceiver(btReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)) }
         pushBluetoothState()
+        probeHandler.removeCallbacks(probeTick); probeHandler.postDelayed(probeTick, 2000)
     }
-    override fun onStop() { scanner.stop(); runCatching { connectivity.unregisterNetworkCallback(netCallback) }; runCatching { unregisterReceiver(btReceiver) }; super.onStop() }
+    override fun onStop() { probeHandler.removeCallbacks(probeTick); scanner.probeStop(); scanner.stop(); runCatching { connectivity.unregisterNetworkCallback(netCallback) }; runCatching { unregisterReceiver(btReceiver) }; super.onStop() }
 
     private fun isBluetoothOn() = btAdapter?.isEnabled == true
     /** Tell the website whether Bluetooth is on, so it can show the BT badge (green = on, red = off). */
-    private fun pushBluetoothState() = post("""{"type":"bluetooth","supported":${btAdapter != null},"on":${isBluetoothOn()}}""")
+    private fun pushBluetoothState() = post("""{"type":"bluetooth","supported":${btAdapter != null},"on":${isBluetoothOn()},"node":${nodeNear()}}""")
 
     /** On app open: if Bluetooth is off, show the system prompt to turn it on. Android 12+ needs the "nearby devices" permission for it. */
     private fun ensureBluetooth() {
-        if (btAdapter == null || isBluetoothOn()) return
+        if (btAdapter == null || isBluetoothOn()) { askScanPermission(); return }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) connectPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
         else askToEnableBluetooth()
     }
+    private fun hasScanPermission() = ContextCompat.checkSelfPermission(this, scanPermissionName()) == PackageManager.PERMISSION_GRANTED
+    private fun scanPermissionName() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Manifest.permission.BLUETOOTH_SCAN else Manifest.permission.ACCESS_FINE_LOCATION
+    /** Ask once at start-up so the badge can tell whether a polling node is in range. */
+    private fun askScanPermission() { if (!hasScanPermission() && pending == null) permission.launch(scanPermissionName()) else probeNow() }
+
+    /** Look briefly for a node beacon and update the badge: green = node signal seen in the last 25 s. */
+    private fun probeNow() {
+        if (!isBluetoothOn() || !hasScanPermission() || scanning) { if (!isBluetoothOn()) { lastNodeSeenAt = 0 }; pushBluetoothState(); return }
+        scanner.probe(5000) { found -> if (found) lastNodeSeenAt = System.currentTimeMillis(); pushBluetoothState() }
+    }
+    private fun nodeNear() = isBluetoothOn() && System.currentTimeMillis() - lastNodeSeenAt < NODE_FRESH_MS
     private fun askToEnableBluetooth() { runCatching { enableBluetooth.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) } }
 
     /** True only when the phone has an internet connection that has been validated. */
@@ -177,7 +194,10 @@ class MainActivity : AppCompatActivity() {
             val lm = getSystemService(LOCATION_SERVICE) as android.location.LocationManager
             if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(lm)) return sendError(id, "BLUETOOTH_OFF", "On this Android version, Bluetooth scanning needs Location turned on. Turn on Location and try again.")
         }
+        scanner.probeStop(); scanning = true
         scanner.scan(timeoutMs) { out ->
+            scanning = false
+            if (out is BleScanner.Outcome.Found) { lastNodeSeenAt = System.currentTimeMillis(); pushBluetoothState() }
             when (out) {
                 is BleScanner.Outcome.Found -> post("""{"type":"scanResult","id":${JSONObject.quote(id)},"claims":[${out.claims.joinToString(",") { it.first.toJson() }}]}""")
                 is BleScanner.Outcome.Failed -> sendError(id, out.code, out.message)
@@ -187,6 +207,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun sendError(id: String, code: String, message: String) =
         post("""{"type":"error","id":${JSONObject.quote(id)},"code":${JSONObject.quote(code)},"message":${JSONObject.quote(message)}}""")
+
+    private companion object { const val PROBE_EVERY_MS = 10_000L; const val NODE_FRESH_MS = 25_000L }
 
     private fun post(json: String) = runOnUiThread { reply?.postMessage(json) }
 }

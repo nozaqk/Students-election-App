@@ -70,6 +70,39 @@ class BleScanner(context: Context) {
         timeout = Runnable { finish() }.also { main.postDelayed(it, timeoutMs) }
     }
 
+    private var probeCb: ScanCallback? = null
+    private var probeTimeout: Runnable? = null
+
+    /**
+     * Short background look for ANY polling-node beacon, used only for the status badge. It does not relay anything to the
+     * server: the badge means "a node signal is in range", and real verification still happens server-side when voting.
+     */
+    @SuppressLint("MissingPermission")
+    fun probe(timeoutMs: Long, onDone: (found: Boolean) -> Unit) {
+        probeStop()
+        val scanner = adapter?.takeIf { it.isEnabled }?.bluetoothLeScanner ?: return onDone(false)
+        var finished = false
+        fun finish(found: Boolean) { if (finished) return; finished = true; probeStop(); onDone(found) }
+        val cb = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                if (BeaconParser.parse(result.scanRecord?.getManufacturerSpecificData(BeaconParser.COMPANY_ID)) != null) finish(true)
+            }
+            override fun onScanFailed(errorCode: Int) { finish(false) }
+        }
+        probeCb = cb
+        val filter = ScanFilter.Builder().setManufacturerData(BeaconParser.COMPANY_ID, byteArrayOf(1), byteArrayOf(0xFF.toByte())).build()
+        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build()
+        try { scanner.startScan(listOf(filter), settings, cb) } catch (e: Exception) { probeCb = null; return onDone(false) }
+        probeTimeout = Runnable { finish(false) }.also { main.postDelayed(it, timeoutMs) }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun probeStop() {
+        probeTimeout?.let(main::removeCallbacks); probeTimeout = null
+        probeCb?.let { try { adapter?.bluetoothLeScanner?.stopScan(it) } catch (_: Exception) {} }
+        probeCb = null
+    }
+
     @SuppressLint("MissingPermission")
     fun stop() {
         generation++
