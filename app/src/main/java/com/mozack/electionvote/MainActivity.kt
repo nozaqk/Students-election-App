@@ -60,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     // System dialog "Allow Student Election to turn on Bluetooth?" (apps cannot switch Bluetooth on silently on modern Android).
     private val enableBluetooth = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { pushBluetoothState(); askScanPermission() }
     private val connectPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) askToEnableBluetooth() else { pushBluetoothState(); askScanPermission() } }
+    private val notifyPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private var scanning = false                               // a vote-time scan is running: do not start a badge probe over it
     private var lastNodeSeenAt = 0L
     private var badgeNode = false
@@ -183,6 +184,15 @@ class MainActivity : AppCompatActivity() {
                 if (ContextCompat.checkSelfPermission(this, perm) == PackageManager.PERMISSION_GRANTED) runScan(id, timeout)
                 else { pending = id to timeout; permission.launch(perm) }
             }
+            "notifyStart" -> {
+                val t = json.optString("token"); val b = json.optString("apiBase").trimEnd('/')
+                if (t.length in 20..2000 && b.startsWith("https://") && b.length < 300) {
+                    NotifyStore(this).set(t, b); Notifier.ensureChannel(this)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !Notifier.canPost(this)) notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    NotifyWorker.start(this)
+                }
+            }
+            "notifyStop" -> NotifyWorker.stop(this)
             "btStatus" -> pushBluetoothState()
             "btEnable" -> ensureBluetooth()
             "openSettings" -> startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
