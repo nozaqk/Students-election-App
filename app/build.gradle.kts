@@ -34,5 +34,6 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-ktx:1.9.2")
     implementation("androidx.webkit:webkit:1.11.0")
+    implementation("androidx.work:work-runtime:2.9.1")
     testImplementation("junit:junit:4.13.2")
 }
