@@ -285,10 +285,10 @@ class _VoteFlowState extends State<VoteFlow> {
                 ),
               if (err != null) ErrorBox(err),
               if (_needSettings)
-                AppButton(
+                const AppButton(
                   'Open app settings',
                   variant: ButtonVariant.secondary,
-                  margin: const EdgeInsets.only(bottom: 8),
+                  margin: EdgeInsets.only(bottom: 8),
                   onPressed: AppPermissions.openAppSettings,
                 ),
               AppButton(

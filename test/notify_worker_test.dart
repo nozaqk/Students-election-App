@@ -23,26 +23,42 @@ void main() {
     final store = await NotifyStore.load();
     await store.set('x' * 32, 'https://api.example.test');
 
-    await NotifyWorker.process(store, _feed([
-      {'electionId': 'e1', 'key': 'SCHEDULED|1', 'state': 'SCHEDULED', 'title': 'SRC', 'body': 'Opens Monday'},
-    ]), show: capture);
+    await NotifyWorker.process(
+      store,
+      _feed([
+        {'electionId': 'e1', 'key': 'SCHEDULED|1', 'state': 'SCHEDULED', 'title': 'SRC', 'body': 'Opens Monday'},
+      ]),
+      show: capture,
+    );
     expect(shown, isEmpty);
     expect(store.seeded, isTrue);
 
-    await NotifyWorker.process(store, _feed([
-      {'electionId': 'e1', 'key': 'SCHEDULED|1', 'state': 'SCHEDULED', 'title': 'SRC', 'body': 'Opens Monday'},
-    ]), show: capture);
+    await NotifyWorker.process(
+      store,
+      _feed([
+        {'electionId': 'e1', 'key': 'SCHEDULED|1', 'state': 'SCHEDULED', 'title': 'SRC', 'body': 'Opens Monday'},
+      ]),
+      show: capture,
+    );
     expect(shown, isEmpty, reason: 'unchanged key');
 
-    await NotifyWorker.process(store, _feed([
-      {'electionId': 'e1', 'key': 'SCHEDULED|2', 'state': 'SCHEDULED', 'title': 'SRC', 'body': 'Opens Tuesday'},
-    ]), show: capture);
+    await NotifyWorker.process(
+      store,
+      _feed([
+        {'electionId': 'e1', 'key': 'SCHEDULED|2', 'state': 'SCHEDULED', 'title': 'SRC', 'body': 'Opens Tuesday'},
+      ]),
+      show: capture,
+    );
     expect(shown, ['Election schedule updated: SRC | Opens Tuesday']);
 
-    await NotifyWorker.process(store, _feed([
-      {'electionId': 'e1', 'key': 'ACTIVE|3', 'state': 'ACTIVE', 'title': 'SRC', 'body': 'Vote now'},
-      {'electionId': 'e2', 'key': 'PUBLISHED|1', 'state': 'PUBLISHED', 'title': 'Hall', 'body': 'See results'},
-    ]), show: capture);
+    await NotifyWorker.process(
+      store,
+      _feed([
+        {'electionId': 'e1', 'key': 'ACTIVE|3', 'state': 'ACTIVE', 'title': 'SRC', 'body': 'Vote now'},
+        {'electionId': 'e2', 'key': 'PUBLISHED|1', 'state': 'PUBLISHED', 'title': 'Hall', 'body': 'See results'},
+      ]),
+      show: capture,
+    );
     expect(shown.skip(1), ['Voting is open: SRC | Vote now', 'Results published: Hall | See results']);
   });
 

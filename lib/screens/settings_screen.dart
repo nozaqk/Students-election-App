@@ -132,7 +132,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     LabeledField(
                       label: 'Level',
                       child: DropdownButtonFormField<int>(
-                        value: _level,
+                        initialValue: _level,
                         items: [for (final l in levels) DropdownMenuItem(value: l, child: Text('Level $l'))],
                         onChanged: _busy ? null : (v) => setState(() => _level = v ?? _level),
                       ),
@@ -140,7 +140,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     LabeledField(
                       label: 'Semester',
                       child: DropdownButtonFormField<int>(
-                        value: _semester,
+                        initialValue: _semester,
                         items: const [
                           DropdownMenuItem(value: 1, child: Text('Semester 1')),
                           DropdownMenuItem(value: 2, child: Text('Semester 2')),

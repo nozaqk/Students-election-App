@@ -3,7 +3,7 @@
 library;
 
 String _str(Object? v, [String fallback = '']) => v == null ? fallback : v.toString();
-String? _strOrNull(Object? v) => v == null ? null : v.toString();
+String? _strOrNull(Object? v) => v?.toString();
 int _int(Object? v, [int fallback = 0]) {
   if (v is int) return v;
   if (v is num) return v.toInt();
