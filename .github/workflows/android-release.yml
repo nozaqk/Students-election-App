@@ -1,38 +1,53 @@
 name: Android APK (latest)
-# Builds the app on every push to main and keeps ONE release called "latest" holding only the newest APK.
+# Builds the Flutter app on every push to main and keeps ONE release called "latest" holding only the newest APK.
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
-  group: android-latest
+  group: android-latest-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  check:
+    name: Analyse and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Formatting, analysis and tests
+        run: ./scripts/check.sh
+
   apk:
+    name: Build APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
-      - name: Accept Android SDK licenses and install platform (the runner image already ships the SDK)
-        run: |
-          SDKM="$(ls -d $ANDROID_HOME/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
-          yes | "$SDKM" --licenses > /dev/null || true
-          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null
-      - uses: gradle/actions/setup-gradle@v4
-        with: { gradle-version: "8.7" }
-      - name: Unit tests (informational, never blocks the APK)
-        continue-on-error: true
-        run: gradle :app:testDebugUnitTest --stacktrace
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
       - name: Build APK
-        run: gradle :app:assembleDebug --stacktrace -PstudentUrl=${{ vars.STUDENT_URL || 'https://student-election-frontend.edgeone.dev' }}
+        env:
+          API_URL: ${{ vars.API_URL || 'https://students-election-system.onrender.com' }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: ./scripts/build_apk.sh --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: election-app
+          path: election-app.apk
       - name: Replace the "latest" release with this build
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/*.apk election-app.apk
           gh release delete latest --cleanup-tag --yes || true
           gh release create latest election-app.apk --target "$GITHUB_SHA" --latest \
             --title "Election app (latest build)" \

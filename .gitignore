@@ -1,0 +1,30 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+
+# Android host project
+android/.gradle/
+android/captures/
+android/local.properties
+android/key.properties
+android/**/GeneratedPluginRegistrant.java
+android/**/GeneratedPluginRegistrant.kt
+android/app/.cxx/
+*.jks
+*.keystore
+
+# OS
+.DS_Store
+Thumbs.db

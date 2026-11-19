@@ -1,6 +1,0 @@
-<resources>
-    <string name="app_name">Student Election</string>
-    <string name="offline_title">No internet connection</string>
-    <string name="offline_body">Connect to the internet to use Student Election, then tap Try again.</string>
-    <string name="retry">Try again</string>
-</resources>

@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Same launcher icon, drawn smaller: the transparent inset shrinks it to about half the size. -->
-<inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:drawable="@mipmap/ic_launcher"
-    android:inset="25%" />
