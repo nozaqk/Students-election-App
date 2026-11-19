@@ -23,6 +23,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: "3.24.5"
           cache: true
       - name: Formatting, analysis and tests
         run: ./scripts/check.sh 2>&1 | tee check-output.txt
@@ -44,6 +45,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: "3.24.5"
           cache: true
       - name: Build APK
         env:

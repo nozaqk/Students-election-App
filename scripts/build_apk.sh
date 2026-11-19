@@ -31,7 +31,7 @@ url="$(api_url)"
 info "API: $url"
 info "Mode: $mode"
 
-args=(build apk "--$mode" --android-skip-build-dependency-validation --dart-define="API_URL=$url")
+args=(build apk "--$mode" --dart-define="API_URL=$url")
 [[ -n "${BUILD_NUMBER:-}" ]] && args+=(--build-number="$BUILD_NUMBER")
 [[ -n "${BUILD_NAME:-}" ]]   && args+=(--build-name="$BUILD_NAME")
 (( split )) && args+=(--split-per-abi)
