@@ -1,0 +1,36 @@
+name: election_student
+description: Student Election — a secure mobile voting app for students (Dart / Flutter rebuild of the student election web app).
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Networking (JSON API over HTTPS).
+  http: ^1.2.1
+
+  # Session token lives in encrypted storage; small app-private state (notification feed) in shared preferences.
+  flutter_secure_storage: ^9.2.2
+  shared_preferences: ^2.2.3
+
+  # Presence verification: Bluetooth Low Energy scan for the ESP32 polling-node beacons.
+  flutter_blue_plus: ^1.32.12
+  permission_handler: ^11.3.1
+  device_info_plus: ^10.1.2
+
+  # Election updates as phone notifications while the app is closed.
+  flutter_local_notifications: ^17.2.2
+  workmanager: ^0.5.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
