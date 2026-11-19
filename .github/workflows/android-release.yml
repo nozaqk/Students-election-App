@@ -7,9 +7,13 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  pull-requests: write
 concurrency:
   group: android-latest-${{ github.ref }}
   cancel-in-progress: true
+defaults:
+  run:
+    shell: bash   # bash -eo pipefail: a failure before `| tee` still fails the step
 jobs:
   check:
     name: Analyse and test
@@ -21,7 +25,14 @@ jobs:
           channel: stable
           cache: true
       - name: Formatting, analysis and tests
-        run: ./scripts/check.sh
+        run: ./scripts/check.sh 2>&1 | tee check-output.txt
+      - name: Report failure on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo "### ❌ Analyse and test failed"; echo; echo '```'; grep -v '^\s*$' check-output.txt | tail -n 250; echo '```'; } > comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file comment.md
 
   apk:
     name: Build APK
@@ -38,7 +49,14 @@ jobs:
         env:
           API_URL: ${{ vars.API_URL || 'https://students-election-system.onrender.com' }}
           BUILD_NUMBER: ${{ github.run_number }}
-        run: ./scripts/build_apk.sh --release
+        run: ./scripts/build_apk.sh --release 2>&1 | tee build-output.txt
+      - name: Report failure on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo "### ❌ Build APK failed"; echo; echo '```'; grep -v '^\s*$' build-output.txt | grep -iv '^\s*at \|^\s*\.\.\.' | tail -n 200; echo '```'; } > comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file comment.md
       - uses: actions/upload-artifact@v4
         with:
           name: election-app
